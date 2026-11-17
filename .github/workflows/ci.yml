@@ -74,7 +74,7 @@ jobs:
         run: npm ci
 
       - name: Run expo-doctor
-        run: npx expo-doctor@1.24.1 --yes
+        run: npx expo-doctor@1.21.8 --yes
 
   android-dry-build:
     name: Android debug build (dry-run, no signing)
