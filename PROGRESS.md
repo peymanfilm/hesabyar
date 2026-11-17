@@ -1,30 +1,29 @@
 # PROGRESS.md — وضعیت اجرای پروژه
 
-**به‌روزرسانی:** ۱۴۰۴/۰۸/۲۶ — نوبت سوم (بعد از گزارش «APK خراب» توسط کاربر)
+**به‌روزرسانی:** ۱۴۰۴/۰۸/۲۶ — نوبت چهارم (چرخهٔ پنجم pipeline انتشار در حال اجراست)
 
 ## فاز فعلی
-فاز ۹–۱۰ — **CI سه‌مرحله‌ای کاملاً سبز شد، merge به main انجام شد، tag v1.0.0 زده شد و workflow انتشار در حال اجراست.**
+فاز ۹–۱۰ — **build امضاشدهٔ APK دو بار پشت‌سرهم سبز شد؛ مرحلهٔ تست شبیه‌ساز در حال رفع ایراد ابزاری است.**
 
-## علت «APK خراب» که کاربر دید
-روی صفحهٔ Actions هیچ Release منتشرنشده بود؛ چیزی که کاربر دانسته بود artifact **debug** آزمایشی بود (برای تست ساخت، نه انتشار). علت شکست‌های قبلی هم کشف و رفع شد:
-1. **پر شدن دیسک runner** (`No space left on device`) → گام آزادسازی ~۲۵GB به هر سه job سنگین اضافه شد
-2. **قطع موقتی CDN Maven Central** هنگام resolve چهار artifact Kotlin 2.2.0 → موقتی بود (200 OK؛ در rerun سبز شد)
-3. نسخه‌های patch جدید Expo → هم‌تراز شدند (expo 58.0.26، fs 58.0.14، router 58.0.32، sqlite 58.0.18، jest-expo 58.0.15)
+## کشف مهم دربارهٔ «APK خراب» کاربر
+روی GitHub هیچ Release منتشرنشده بود؛ فایلی که کاربر دانسته بود artifact debug آزمایشی بود. زنجیرهٔ واقعی ایرادها (همه کشف و رفع شد):
+1. پر شدن دیسک runner (`No space left on device`) → گام آزادسازی ~۲۵GB
+2. قطع موقتی CDN Maven Central برای ۴ artifact Kotlin 2.2.0 → موقتی (rerun سبز)
+3. `rg` روی runner image جدید موجود نیست (exit 127 در گام apksigner) → grep جایگزین شد
+4. `lintVitalRelease` fatal به‌خاطر فایل locale فارسی با کلیدهای خارج از default locale → locales حذف شد (نام اپ همچنان فارسی)
+5. **اکشن شبیه‌ساز خطوط اسکریپت را فشرده می‌کند** → ساختار `if/fi` چندخطی شکست parse می‌خورد (`expecting "fi"`) → اسکریپت «تک‌خطی‌امن» بازنویسی شد (جمله‌ها با `;`)
+6. APK در چرخهٔ چهارم با موفقیت **روی شبیه‌ساز نصب شد** (`Success`) — فقط ادامهٔ اسکریپت به ایراد بند ۵ خورد
 
-## آخرین کار تکمیل‌شده
-- **CI کامل سبز:** run 44097182238 (quality + expo-doctor 20/20 + ساخت debug واقعی، artifact 80MB)
-- **merge به main:** commit سبز `18956c1` به main پوش شد (main از قبل خالی بود؛ PR ممکن نبود)
-- **tag v1.0.0** روی همان commit زده و پوش شد → workflow `Android Release` اجرا شد (id 44108412550)
-- دروازهٔ Secrets امضا: سبز | تست‌ها روی تگ: سبز | build امضاشده: در حال اجرا
-
-## کار در حال انجام
-- build signed release APK → apksigner verify → نصب و اجرا روی شبیه‌ساز API 30 → انتشار Release
-- پس از سبز شدن: دانلود APK در sandbox، بررسی چک‌سام، به‌روزرسانی TEST_REPORT و RELEASE_CHECKLIST و DELIVERY
+## وضعیت pipeline انتشار (چرخهٔ ۵، run id 44152845271)
+- دروازهٔ Secrets: سبز | تست‌ها روی tag: سبز | build امضاشده + apksigner verify: سبز
+- شبیه‌ساز API 30: نصب → اجرا → بررسی زنده بودن پروسه (pidof) → بررسی FATAL در logcat
+- پس از سبز شدن: draft release → publish → APK + sha256 روی صفحهٔ Release
 
 ## قدم بعدی دقیق
-1. سبز شدن کامل `android-release.yml`
-2. تأیید Release منتشرشده + لینک مستقیم APK + SHA-256
-3. مستندسازی نهایی و گزارش تحویل ۱۲بندی
+1. سبز شدن کامل چرخهٔ ۵ → Release منتشرشده
+2. دانلود APK در sandbox و تطبیق SHA-256
+3. به‌روزرسانی TEST_REPORT.md و RELEASE_CHECKLIST.md و DELIVERY.md با شواهد واقعی
+4. گزارش تحویل ۱۲بندی
 
 ## commit و workflow مرتبط
-- main: `18956c1` | tag: `v1.0.0` | CI سبز: 44097182238 | Release run: 44108412550
+- main/tag: `eb8e67d` = v1.0.0 | CI کیفیت: سبز (سه بار) | Release run: 44152845271
