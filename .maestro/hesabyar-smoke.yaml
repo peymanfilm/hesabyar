@@ -1,0 +1,9 @@
+# تست مسیر واقعی حساب‌یار روی شبیه‌ساز Android — سناریوی مأموریت §۱۴-ج
+# اجرا: maestro test .maestro/hesabyar-smoke.yaml (شبیه‌ساز در حال اجرا لازم است)
+appId: com.peymanfilm.hesabyar
+name: hesabyar-smoke-میان‌بر
+---
+- launchApp:
+    clearState: true          # اجرای تازه
+- assertVisible: "حساب‌یار"    # اپ بدون Metro باز شده و crash ندارد
+- assertVisible: "ثبت جدید"

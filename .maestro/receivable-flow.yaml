@@ -1,0 +1,32 @@
+# جریان کامل طلب و بدهی — سناریوی مأموریت: طلب ۱۰ میلیون، دریافت ۲ و ۳، مانده ۵
+appId: com.peymanfilm.hesabyar
+name: hesabyar-request-10m
+---
+- launchApp:
+    clearState: true
+- tapOn: "ثبت جدید"
+- tapOn: "طلب از کسی"
+- tapOn: "عنوان"
+- inputText: "قرض علی"
+- tapOn: "شخص"
+- inputText: "علی محمدی"
+- tapOn: "مبلغ طلب"
+- inputText: "100000000"
+- scrollUntilVisible:
+    element: "ثبت طلب"
+    direction: DOWN
+- tapOn: "ثبت طلب"
+- assertVisible: "طلب من"
+- tapOn: "ثبت دریافت"
+- tapOn: "مبلغ"
+- inputText: "20000000"
+- tapOn: "ثبت و نمایش رسید"
+- assertVisible: "دریافت"
+- back
+- tapOn: "ثبت دریافت"
+- inputText: "30000000"
+- tapOn: "ثبت و نمایش رسید"
+- back
+# مانده ۵ میلیون تومان باید روی کارت مانده دیده شود (۱۰۰−۲۰−۳۰=۵۰ میلیون ریال)
+- assertVisible: "50"
+- assertVisible: "50000000"

@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: ["main", "master", "develop", "feature/**"]
+  workflow_dispatch:
+
+# حداقلی؛ secrets برای pull_request از fork در دسترس نیست (رویداد pull_request بدون secrets)
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: .
+
+jobs:
+  quality:
+    name: Lint, Typecheck, Unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4.1.0
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies (with lockfile)
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit & integration tests (money, dates, installments, balances, backup, db)
+        run: npm test -- --ci --runInBand
+
+      - name: Upload test summary
+        if: always()
+        uses: actions/upload-artifact@v4.4.3
+        with:
+          name: test-results
+          path: |
+            jest-html-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  expo-doctor:
+    name: Expo compatibility check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4.1.0
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run expo-doctor
+        run: npx expo-doctor@1.24.1 --yes
+
+  android-dry-build:
+    name: Android debug build (dry-run, no signing)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    needs: [quality]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Setup Java 17 (Android Gradle)
+        uses: actions/setup-java@v4.5.0
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Node
+        uses: actions/setup-node@v4.1.0
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate native project (prebuild, reproducible)
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Gradle debug assemble (verify native build works)
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Check APK artifact exists
+        run: |
+          test -f android/app/build/outputs/apk/debug/app-debug.apk
+          echo "debug APK built (این فقط بررسی ساخت است، نه انتشار)"
+          ls -la android/app/build/outputs/apk/debug/
+
+      - name: Upload diagnostic APK artifact
+        if: always()
+        uses: actions/upload-artifact@v4.4.3
+        with:
+          name: android-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4.4.3
+        with:
+          name: gradle-logs
+          path: |
+            android/app/build/reports/
+            android/logs/
+          if-no-files-found: ignore
+          retention-days: 7

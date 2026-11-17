@@ -1,0 +1,328 @@
+name: Android Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'نسخهٔ release (مثل 1.0.0) — بدون پیشوند v'
+        required: true
+        type: string
+
+# انتشار فقط contents: write لازم دارد
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify-prerequisites:
+    name: Verify signing secrets & version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Fail fast if signing secrets are missing
+        id: secrets
+        shell: bash
+        env:
+          K: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KP: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KA: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KAP: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=()
+          [ -z "$K" ] && missing+=("ANDROID_KEYSTORE_BASE64")
+          [ -z "$KP" ] && missing+=("ANDROID_KEYSTORE_PASSWORD")
+          [ -z "$KA" ] && missing+=("ANDROID_KEY_ALIAS")
+          [ -z "$KAP" ] && missing+=("ANDROID_KEY_PASSWORD")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Secrets امضا تنظیم نشده‌اند: ${missing[*]}"
+            echo "بدون کلید امضا، انتشار نسخهٔ release ممنوع است (APK debug جا release نمی‌شود)."
+            echo "راهنما: docs/signing.md — کلید را محلی بسازید و چهار secret را تنظیم کنید."
+            exit 1
+          fi
+          echo "all signing secrets present"
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            V="${{ inputs.version }}"
+            case "$V" in
+              [0-9]*.[0-9]*.[0-9]*) ;;
+              *) echo "::error::فرمت نسخه باید x.y.z باشد"; exit 1 ;;
+            esac
+          else
+            V="${GITHUB_REF_NAME#v}"
+            case "$V" in
+              [0-9]*.[0-9]*.[0-9]*) ;;
+              *) echo "::error::تگ باید الگوی vX.Y.Z داشته باشد"; exit 1 ;;
+            esac
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "release version: $V"
+
+  test:
+    name: Re-run required tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: [verify-prerequisites]
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-node@v4.1.0
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Lint + typecheck + tests
+        run: |
+          npm run lint
+          npm run typecheck
+          npm test -- --ci --runInBand
+
+  build:
+    name: Build signed release APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    needs: [verify-prerequisites, test]
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4.2.2
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.ref }}
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4.5.0
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4.1.0
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore keystore into temp dir (not committed, deleted after build)
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          KEYSTORE_DIR=$(mktemp -d)
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_DIR/hesabyar-release.keystore"
+          echo "KEYSTORE_FILE=$KEYSTORE_DIR/hesabyar-release.keystore" >> "$GITHUB_ENV"
+          echo "KEYSTORE_DIR=$KEYSTORE_DIR" >> "$GITHUB_ENV"
+
+      - name: Version config (versionName from tag/input, versionCode monotonic)
+        env:
+          APP_VERSION: ${{ needs.verify-prerequisites.outputs.version }}
+        run: |
+          echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
+          # versionCode: از تاریخ UTC مشتق می‌شود و همیشه افزایشی است
+          VC=$(( $(date -u +%Y) * 100000 + $(date -u +%m) * 3000 + $(date -u +%d) * 100 ))
+          echo "APP_VERSION_CODE=$VC" >> "$GITHUB_ENV"
+          echo "versionName=$APP_VERSION versionCode=$VC"
+
+      - name: Expo prebuild (reproducible native project)
+        env:
+          APP_VERSION: ${{ env.APP_VERSION }}
+          APP_VERSION_CODE: ${{ env.APP_VERSION_CODE }}
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Gradle assembleRelease (signed via secrets)
+        env:
+          HESABYAR_KS_FILE: ${{ env.KEYSTORE_FILE }}
+          HESABYAR_KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          HESABYAR_KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          HESABYAR_KS_KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          APP_VERSION: ${{ env.APP_VERSION }}
+          APP_VERSION_CODE: ${{ env.APP_VERSION_CODE }}
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Delete keystore from runner
+        if: always()
+        run: rm -rf "$KEYSTORE_DIR"
+
+      - name: Verify APK signature & metadata (apksigner + aapt)
+        env:
+          APP_VERSION: ${{ env.APP_VERSION }}
+        run: |
+          SDK="$ANDROID_HOME"
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          test -f "$APK"
+          APKSIGNER=$(ls "$SDK"/build-tools/*/apksigner | sort -V | tail -1)
+          AAPT=$(ls "$SDK"/build-tools/*/aapt2 | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose "$APK" | head -30
+          echo "--- metadata ---"
+          "$AAPT" dump badging "$APK" | rg "package:|application-label|sdkVersion|targetSdkVersion|native-code"
+          # applicationId ثابت
+          "$AAPT" dump badging "$APK" | rg -q "package: name='com.peymanfilm.hesabyar'" || { echo "::error::applicationId غلط است"; exit 1; }
+          echo "APK verified: signed + correct applicationId"
+
+      - name: Name & checksum APK
+        env:
+          APP_VERSION: ${{ env.APP_VERSION }}
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          OUT="hesabyar-v${APP_VERSION}-android.apk"
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee "${OUT}.sha256"
+          echo "APK_PATH=$PWD/$OUT" >> "$GITHUB_ENV"
+          echo "APK_NAME=$OUT" >> "$GITHUB_ENV"
+
+      - name: Upload artifact (برای تست شبیه‌ساز و Release)
+        uses: actions/upload-artifact@v4.4.3
+        with:
+          name: hesabyar-release-apk
+          path: |
+            ${{ env.APK_NAME }}
+            ${{ env.APK_NAME }}.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4.4.3
+        with:
+          name: release-failure-logs
+          path: |
+            android/app/build/reports/
+            android/logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  emulator-test:
+    name: Install & smoke-test APK on emulator
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    needs: [verify-prerequisites, build]
+    steps:
+      - name: Checkout (Maestro flows)
+        uses: actions/checkout@v4.2.2
+
+      - name: Download tested APK artifact (همان artifact منتشرشده)
+        uses: actions/download-artifact@v4.1.8
+        with:
+          name: hesabyar-release-apk
+
+      - name: Verify checksum of downloaded APK (همان فایل تست و انتشار)
+        run: |
+          sha256sum -c hesabyar-v*.sha256
+          ls -la
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", OWNER="root", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4.5.0
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v4.0.0
+
+      - name: Run emulator & install APK
+        uses: reactivecircus/android-emulator-runner@v2.34.0
+        with:
+          api-level: 30
+          arch: x86_64
+          target: google_apis
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            adb install -r hesabyar-v*.apk
+            # اجرای بدون Metro/سرور توسعه: اپ باید به‌تنهایی باز شود
+            adb shell am start -n com.peymanfilm.hesabyar/.MainActivity
+            sleep 12
+            # بررسی crash اولیه
+            adb shell "dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity'"
+            if adb logcat -d | rg -q "FATAL EXCEPTION.*com.peymanfilm.hesabyar"; then
+              echo "::error::اپ هنگام شروع crash کرده است"
+              adb logcat -d | rg "FATAL EXCEPTION" -A 20 | head -60
+              exit 1
+            fi
+            echo "APK نصب و اجرا شد؛ بدون crash اولیه"
+
+      - name: Collect emulator logs (always)
+        if: always()
+        run: |
+          adb logcat -d > logcat.txt 2>/dev/null || true
+          mkdir -p shots
+          adb exec-out screencap -p > shots/last-screen.png 2>/dev/null || true
+
+      - name: Upload emulator diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4.4.3
+        with:
+          name: emulator-diagnostics
+          path: |
+            logcat.txt
+            shots/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  release:
+    name: Publish GitHub Release (draft → publish)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: [verify-prerequisites, build, emulator-test]
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4.1.8
+        with:
+          name: hesabyar-release-apk
+
+      - name: Re-verify checksum before publish
+        run: sha256sum -c hesabyar-v*.sha256
+
+      - name: Extract checksum
+        id: sha
+        run: echo "checksum=$(cut -d' ' -f1 hesabyar-v*.sha256)" >> "$GITHUB_OUTPUT"
+
+      - name: Create draft release
+        id: draft
+        uses: softprops/action-gh-release@v2.0.8
+        with:
+          draft: true
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+          name: حساب‌یار v${{ needs.verify-prerequisites.outputs.version }}
+          body: |
+            نسخهٔ **${{ needs.verify-prerequisites.outputs.version }}** اپلیکیشن حساب‌یار
+
+            ## نصب
+            1. فایل `hesabyar-v${{ needs.verify-prerequisites.outputs.version }}-android.apk` را دانلود کنید.
+            2. نصب از منابع ناشناس را برای این فایل تأیید کنید.
+            3. SHA-256: `${{ steps.sha.outputs.checksum }}`
+
+            ## تغییرات
+            - اولین انتشار: مدیریت وام و اقساط، طلب و بدهی، تراکنش و رسید، یادآوری، گزارش و پشتیبان‌گیری (کامل فارسی و آفلاین)
+
+            ## نکات
+            - تست نصب/اجرا روی شبیه‌ساز API 30 انجام شده است؛ پوشش همهٔ دستگاه‌ها تضمین نیست.
+            - همهٔ داده‌ها فقط روی گوشی ذخیره می‌شوند (بدون سرور).
+          files: |
+            hesabyar-v*.apk
+            hesabyar-v*.sha256
+          fail_on_unmatched_files: true
+
+      - name: Publish release (فقط پس از موفقیت همهٔ بررسی‌های الزامی)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+        run: |
+          gh release edit "$TAG" --draft=false
+          echo "Release منتشر شد: ${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG"
