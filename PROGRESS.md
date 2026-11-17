@@ -20,6 +20,10 @@
 2. **Secrets امضا موجود نیست**: بدون ANDROID_KEYSTORE_BASE64 و هم‌نشین‌ها، workflow انتشار عمداً fail می‌کند تا APK debug جا release نشود.
 3. **شبیه‌ساز/SDK محلی نیست**: تست نصب APK و تصاویر واقعی فقط در CI یا دستگاه واقعی ممکن است.
 
+## نتیجهٔ تلاش push (واقعی)
+- `git ls-remote https://github.com/peymanfilm/hesabyar.git` → `fatal: could not read Username` (بدون اعتبارنامه)
+- `git push origin feature/hesabyar-app` → همان خطا. **۸ commit محلی آماده روی branch `feature/hesabyar-app`**
+
 ## قدم بعدی دقیق
 1. صاحب مخزن دسترسی را فراهم کند (بند «خطاهای باز»).
 2. `git push -u origin feature/hesabyar-app` از پوشهٔ پروژه (کد و lockfile آماده‌اند).
