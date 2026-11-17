@@ -64,17 +64,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4.2.2
 
-      - name: Setup Node
+      - name: Setup Node (expo-doctor requires >=22.13)
         uses: actions/setup-node@v4.1.0
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
         run: npm ci
 
       - name: Run expo-doctor
-        run: npx expo-doctor@1.21.8 --yes
+        run: npx expo-doctor@1.21.8
 
   android-dry-build:
     name: Android debug build (dry-run, no signing)
