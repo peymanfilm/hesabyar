@@ -174,9 +174,9 @@ jobs:
           AAPT=$(ls "$SDK"/build-tools/*/aapt2 | sort -V | tail -1)
           "$APKSIGNER" verify --verbose "$APK" | head -30
           echo "--- metadata ---"
-          "$AAPT" dump badging "$APK" | rg "package:|application-label|sdkVersion|targetSdkVersion|native-code"
+          "$AAPT" dump badging "$APK" | grep -E "package:|application-label|sdkVersion|targetSdkVersion|native-code" || true
           # applicationId ثابت
-          "$AAPT" dump badging "$APK" | rg -q "package: name='com.peymanfilm.hesabyar'" || { echo "::error::applicationId غلط است"; exit 1; }
+          "$AAPT" dump badging "$APK" | grep -q "package: name='com.peymanfilm.hesabyar'" || { echo "::error::applicationId غلط است"; exit 1; }
           echo "APK verified: signed + correct applicationId"
 
       - name: Name & checksum APK
@@ -252,9 +252,6 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Gradle cache
-        uses: gradle/actions/setup-gradle@v4.0.0
-
       - name: Run emulator & install APK
         uses: reactivecircus/android-emulator-runner@v2.34.0
         with:
@@ -270,9 +267,9 @@ jobs:
             sleep 12
             # بررسی crash اولیه
             adb shell "dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity'"
-            if adb logcat -d | rg -q "FATAL EXCEPTION.*com.peymanfilm.hesabyar"; then
+            if adb logcat -d | grep -q "FATAL EXCEPTION.*com.peymanfilm.hesabyar"; then
               echo "::error::اپ هنگام شروع crash کرده است"
-              adb logcat -d | rg "FATAL EXCEPTION" -A 20 | head -60
+              adb logcat -d | grep -A 20 "FATAL EXCEPTION" | head -60
               exit 1
             fi
             echo "APK نصب و اجرا شد؛ بدون crash اولیه"
