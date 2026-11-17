@@ -1,29 +1,30 @@
 # PROGRESS.md — وضعیت اجرای پروژه
 
-**به‌روزرسانی:** ۱۴۰۴/۰۸/۲۶ — نوبت چهارم (چرخهٔ پنجم pipeline انتشار در حال اجراست)
+**به‌روزرسانی نهایی:** ۱۴۰۴/۰۸/۲۶ (2026-11-17)
 
 ## فاز فعلی
-فاز ۹–۱۰ — **build امضاشدهٔ APK دو بار پشت‌سرهم سبز شد؛ مرحلهٔ تست شبیه‌ساز در حال رفع ایراد ابزاری است.**
+**پروژه کامل و منتشر شد** — فاز ۱۰ (انتشار و تحویل) انجام شد.
 
-## کشف مهم دربارهٔ «APK خراب» کاربر
-روی GitHub هیچ Release منتشرنشده بود؛ فایلی که کاربر دانسته بود artifact debug آزمایشی بود. زنجیرهٔ واقعی ایرادها (همه کشف و رفع شد):
-1. پر شدن دیسک runner (`No space left on device`) → گام آزادسازی ~۲۵GB
-2. قطع موقتی CDN Maven Central برای ۴ artifact Kotlin 2.2.0 → موقتی (rerun سبز)
-3. `rg` روی runner image جدید موجود نیست (exit 127 در گام apksigner) → grep جایگزین شد
-4. `lintVitalRelease` fatal به‌خاطر فایل locale فارسی با کلیدهای خارج از default locale → locales حذف شد (نام اپ همچنان فارسی)
-5. **اکشن شبیه‌ساز خطوط اسکریپت را فشرده می‌کند** → ساختار `if/fi` چندخطی شکست parse می‌خورد (`expecting "fi"`) → اسکریپت «تک‌خطی‌امن» بازنویسی شد (جمله‌ها با `;`)
-6. APK در چرخهٔ چهارم با موفقیت **روی شبیه‌ساز نصب شد** (`Success`) — فقط ادامهٔ اسکریپت به ایراد بند ۵ خورد
+## نتیجهٔ نهایی
+- **Release v1.0.0 منتشر شد:** https://github.com/peymanfilm/hesabyar/releases/tag/v1.0.0
+- APK امضاشده + SHA-256 روی Release؛ دانلود مستقیم ناشناس تأیید شد
+- نصب و اجرا روی شبیه‌ساز API 30 در CI موفق (بدون Metro، بدون crash)
+- گزارش تحویل ۱۲بندی: DELIVERY.md | شواهد تست: TEST_REPORT.md | چک‌لیست: RELEASE_CHECKLIST.md
 
-## وضعیت pipeline انتشار (چرخهٔ ۵، run id 44152845271)
-- دروازهٔ Secrets: سبز | تست‌ها روی tag: سبز | build امضاشده + apksigner verify: سبز
-- شبیه‌ساز API 30: نصب → اجرا → بررسی زنده بودن پروسه (pidof) → بررسی FATAL در logcat
-- پس از سبز شدن: draft release → publish → APK + sha256 روی صفحهٔ Release
+## تاریخچهٔ موانع واقعی و رفع آن‌ها (همه مستند شده)
+1. نبود اعتبارنامه push → با توکن کاربر حل شد
+2. وابستگی‌های file:/tmp در lockfile → نسخه‌های npm واقعی
+3. نسخهٔ ناموجود expo-doctor + Node قدیمی → 1.21.8 با Node 24
+4. پر شدن دیسک runner → گام آزادسازی ~۲۵GB
+5. CDN Maven Central موقتی → rerun
+6. نبود `rg` روی runner → grep
+7. `lintVitalRelease` fatal (locale) → حذف locales
+8. اکشن شبیه‌ساز خطوط را فشرده می‌کند (if/fi شکست) → اسکریپت تک‌خطی‌امن
+9. اتمام سهمیهٔ Actions مخزن private → مخزن عمومی شد (پس از scan امنیتی کامل)
+10. باگ `gh release edit` بدون checkout → انتشار نهایی با API + fix در main
 
-## قدم بعدی دقیق
-1. سبز شدن کامل چرخهٔ ۵ → Release منتشرشده
-2. دانلود APK در sandbox و تطبیق SHA-256
-3. به‌روزرسانی TEST_REPORT.md و RELEASE_CHECKLIST.md و DELIVERY.md با شواهد واقعی
-4. گزارش تحویل ۱۲بندی
-
-## commit و workflow مرتبط
-- main/tag: `eb8e67d` = v1.0.0 | CI کیفیت: سبز (سه بار) | Release run: 44152845271
+## قدم بعدی (نسخهٔ بعد)
+1. توکن GitHub چت را **چرخش/regenerate** کنید
+2. کلید امضا و رمزها (تحویل‌شده در `hesabyar-signing/`) را در جای امن نگه دارید
+3. برای v1.0.1: `node scripts/bump-version.mjs 1.0.1` → tag → push → pipeline خودکار
+4. رفع گام collect شبیه‌ساز (اسکرین‌شات داخل اسکریپت) و اجرای فلوهای Maestro کامل
