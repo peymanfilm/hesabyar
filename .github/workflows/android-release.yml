@@ -261,21 +261,16 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           emulator-boot-timeout: 900
+          # توجه: هر جمله باید «تک‌خطی‌امن» باشد (با ; تمام شود) — اکشن شبیه‌ساز ممکن است خطوط را فشرده کند؛ if/fi چندخطی اینجا ممنوع است
           script: |
-            adb install -r hesabyar-v*.apk
-            # اجرای بدون Metro/سرور توسعه: اپ باید به‌تنهایی باز شود
-            adb shell am start -n com.peymanfilm.hesabyar/.MainActivity || true
-            sleep 15
-            # بررسی crash اولیه: پروسهٔ اپ باید زنده باشد
-            PID=$(timeout 30 adb shell pidof com.peymanfilm.hesabyar | tr -d '\r\n' || true)
-            if [ -z "$PID" ]; then
-              echo "::error::پروسهٔ اپ بعد از اجرا زنده نیست — احتمال crash در شروع"
-              timeout 60 adb logcat -d | grep -B2 -A30 "FATAL EXCEPTION" | head -80 || true
-              exit 1
-            fi
-            echo "app alive, pid=$PID"
-            timeout 60 adb logcat -d | grep -B2 -A25 "FATAL EXCEPTION" | head -40 || true
-            echo "APK نصب و اجرا شد؛ بدون crash اولیه"
+            adb install -r hesabyar-v*.apk;
+            adb shell am start -n com.peymanfilm.hesabyar/.MainActivity || true;
+            sleep 15;
+            timeout 30 adb shell pidof com.peymanfilm.hesabyar > /tmp/hesabyar-pid.txt || true;
+            [ -s /tmp/hesabyar-pid.txt ] || { echo "::error::app process not alive after launch (likely startup crash)"; timeout 60 adb logcat -d | grep -B2 -A30 "FATAL EXCEPTION" | head -80 || true; exit 1; };
+            echo "app alive, pid=$(cat /tmp/hesabyar-pid.txt)";
+            timeout 60 adb logcat -d | grep -B2 -A25 "FATAL EXCEPTION" | head -40 || true;
+            echo "APK installed and launched; no startup crash"
 
       - name: Collect emulator logs (always)
         if: always()
