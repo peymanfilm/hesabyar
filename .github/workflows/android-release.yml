@@ -340,5 +340,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
         run: |
-          gh release edit "$TAG" --draft=false
+          gh release edit "$TAG" --draft=false --repo "$GITHUB_REPOSITORY"
           echo "Release منتشر شد: ${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG"
