@@ -1,25 +1,53 @@
 /**
- * پیکربندی Expo — نسخه از متغیر محیطی CI خوانده می‌شود و در حالت عادی به app.json برمی‌گردد.
- * تنظیمات بومی کاملاً قابل بازتولید با `expo prebuild --clean` است؛
- * هیچ تغییر دستی گم‌شونده در android تولیدشده وجود ندارد.
+ * پیکربندی Expo — تنها منبع پیکربندی (app.json حذف شد تا تعارض اعتبارسنجی پیش نیاید).
+ * نسخه از متغیر محیطی CI خوانده می‌شود و در حالت عادی به مقدار پیش‌فرض برمی‌گردد.
+ * تنظیمات بومی کاملاً قابل بازتولید با `expo prebuild --clean` است.
  */
-const base = require("./app.json");
+const APP_VERSION_FALLBACK = "1.0.0";
 
 module.exports = {
-  ...base.expo,
-  version: process.env.APP_VERSION ?? base.expo.version,
+  name: "حساب‌یار",
+  slug: "hesabyar",
+  scheme: "hesabyar",
+  version: process.env.APP_VERSION ?? APP_VERSION_FALLBACK,
+  orientation: "portrait",
+  userInterfaceStyle: "automatic",
+  newArchEnabled: true,
+  icon: "./assets/images/icon.png",
+  backgroundColor: "#F6F8FA",
+  splash: {
+    image: "./assets/images/splash-icon.png",
+    resizeMode: "contain",
+    backgroundColor: "#F6F8FA",
+  },
+  assetBundlePatterns: ["**/*"],
+  locales: { fa: "./locales/fa.json" },
+  ios: {
+    supportsTablet: true,
+    bundleIdentifier: "com.peymanfilm.hesabyar",
+    buildNumber: "1",
+  },
   android: {
-    ...base.expo.android,
+    package: "com.peymanfilm.hesabyar",
     versionCode:
       process.env.APP_VERSION_CODE != null && !Number.isNaN(Number(process.env.APP_VERSION_CODE))
         ? Number(process.env.APP_VERSION_CODE)
-        : base.expo.android.versionCode,
+        : 1,
+    adaptiveIcon: {
+      foregroundImage: "./assets/images/adaptive-icon.png",
+      backgroundColor: "#087F6D",
+    },
+    softwareKeyboardLayoutMode: "resize",
+    permissions: [
+      "android.permission.POST_NOTIFICATIONS",
+      "android.permission.SCHEDULE_EXACT_ALARM",
+      "android.permission.USE_BIOMETRIC",
+      "android.permission.USE_FINGERPRINT",
+      "android.permission.VIBRATE",
+    ],
   },
   plugins: [
-    [
-      "expo-router",
-      { root: "./app" },
-    ],
+    ["expo-router", { root: "./app" }],
     "expo-font",
     [
       "expo-notifications",
@@ -40,4 +68,8 @@ module.exports = {
     "expo-sqlite",
     "./plugins/with-signed-release.js",
   ],
+  extra: {
+    router: {},
+    eas: { projectId: "" },
+  },
 };
