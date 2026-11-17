@@ -100,6 +100,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Free disk space (RN build needs ~15GB; runner images are nearly full)
+        run: |
+          echo "before:"; df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /opt/hostedtoolcache/Code /usr/share/swift /usr/local/share/rust /usr/local/lib/node_modules || true
+          sudo apt-get remove --purge -y 'mono*' 'llvm*' 'php*' 'dotnet*' 'ghc*' 'texlive*' 'google-chrome*' 'microsoft-edge*' 'firefox*' >/dev/null 2>&1 || true
+          sudo apt-get autoremove -y >/dev/null 2>&1 || true
+          sudo apt-get clean
+          sudo docker image prune -af >/dev/null 2>&1 || true
+          echo "after:"; df -h / | tail -1
+
       - name: Generate native project (prebuild, reproducible)
         run: npx expo prebuild --platform android --clean --no-install
 
