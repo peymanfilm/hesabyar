@@ -21,7 +21,6 @@ module.exports = {
     backgroundColor: "#F6F8FA",
   },
   assetBundlePatterns: ["**/*"],
-  locales: { fa: "./locales/fa.json" },
   ios: {
     supportsTablet: true,
     bundleIdentifier: "com.peymanfilm.hesabyar",
