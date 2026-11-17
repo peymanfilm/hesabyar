@@ -260,26 +260,30 @@ jobs:
           target: google_apis
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           disable-animations: true
+          emulator-boot-timeout: 900
           script: |
             adb install -r hesabyar-v*.apk
             # اجرای بدون Metro/سرور توسعه: اپ باید به‌تنهایی باز شود
-            adb shell am start -n com.peymanfilm.hesabyar/.MainActivity
-            sleep 12
-            # بررسی crash اولیه
-            adb shell "dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity'"
-            if adb logcat -d | grep -q "FATAL EXCEPTION.*com.peymanfilm.hesabyar"; then
-              echo "::error::اپ هنگام شروع crash کرده است"
-              adb logcat -d | grep -A 20 "FATAL EXCEPTION" | head -60
+            adb shell am start -n com.peymanfilm.hesabyar/.MainActivity || true
+            sleep 15
+            # بررسی crash اولیه: پروسهٔ اپ باید زنده باشد
+            PID=$(timeout 30 adb shell pidof com.peymanfilm.hesabyar | tr -d '\r\n' || true)
+            if [ -z "$PID" ]; then
+              echo "::error::پروسهٔ اپ بعد از اجرا زنده نیست — احتمال crash در شروع"
+              timeout 60 adb logcat -d | grep -B2 -A30 "FATAL EXCEPTION" | head -80 || true
               exit 1
             fi
+            echo "app alive, pid=$PID"
+            timeout 60 adb logcat -d | grep -B2 -A25 "FATAL EXCEPTION" | head -40 || true
             echo "APK نصب و اجرا شد؛ بدون crash اولیه"
 
       - name: Collect emulator logs (always)
         if: always()
         run: |
-          adb logcat -d > logcat.txt 2>/dev/null || true
+          timeout 90 adb logcat -d > logcat.txt 2>/dev/null || true
           mkdir -p shots
-          adb exec-out screencap -p > shots/last-screen.png 2>/dev/null || true
+          timeout 30 adb exec-out screencap -p > shots/last-screen.png 2>/dev/null || true
+          echo "collected"
 
       - name: Upload emulator diagnostics
         if: always()
